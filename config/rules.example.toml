@@ -1,0 +1,62 @@
+preset = "lighting_delivery"
+
+[rules.nan_inf]
+enabled = true
+severity = "error"
+supported_aov_types = ["color", "scalar", "vector", "mask", "depth", "unknown"]
+
+[rules.empty_aov]
+enabled = true
+severity = "warning"
+supported_aov_types = ["color"]
+
+[rules.empty_aov.parameters]
+max_luminance = 0.00001
+max_average = 0.000001
+
+[rules.near_empty_aov]
+enabled = true
+severity = "warning"
+supported_aov_types = ["color"]
+
+[rules.near_empty_aov.parameters]
+max_ratio = 0.02
+max_average = 0.001
+empty_max_luminance = 0.00001
+
+[rules.missing_aov]
+enabled = false
+severity = "error"
+
+[rules.missing_aov.parameters]
+required = ["diffuse", "specular", "emission"]
+
+[rules.missing_channels]
+enabled = false
+severity = "error"
+
+[rules.missing_channels.parameters]
+required = ["R", "G", "B"]
+
+[rules.negative_values]
+enabled = false
+severity = "warning"
+supported_aov_types = ["color"]
+
+[rules.constant_channel]
+enabled = false
+severity = "info"
+supported_aov_types = ["color"]
+
+[rules.constant_channel.parameters]
+tolerance = 0.0
+skip_empty_aovs = true
+empty_max_luminance = 0.00001
+
+[rules.resolution_mismatch]
+enabled = true
+severity = "error"
+
+[rules.aov_structure_mismatch]
+enabled = true
+severity = "error"
