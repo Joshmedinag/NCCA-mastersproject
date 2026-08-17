@@ -8,12 +8,20 @@ from aovguard.analysis_core import AOVResult, Thresholds, write_csv, write_json
 from aovguard.config import load_thresholds, merge_threshold_overrides
 from aovguard.core.analysis import analyze as analyze_backend
 from aovguard.core.luminance import LuminanceWeights, REC601, REC709
-from aovguard.core.models import AnalysisOptions, AnalysisReport, FileInspection
+from aovguard.core.models import (
+    AnalysisOptions,
+    AnalysisReport,
+    FileInspection,
+    Severity,
+    SourceMode,
+)
+from aovguard.core.status import AnalysisStatus, analysis_status, severity_counts
 from aovguard.io.reader import OpenEXRReader
 from aovguard.simple import analyze_simple
 from aovguard.multilayer import analyze_multilayer, inspect_exr
 from aovguard.reports.json_report import write_analysis_json
 from aovguard.reports.html_report import write_analysis_html
+from aovguard.reports.comparison import compare_report_files, write_comparison_json
 from aovguard.rules.builtin import default_rule_definitions
 from aovguard.rules.definitions import RuleDefinition
 from aovguard.rules.loader import load_rule_preset
@@ -72,10 +80,51 @@ def _add_backend_analysis_args(parser: argparse.ArgumentParser) -> None:
     )
     parser.add_argument("--non-black-threshold", type=float, default=1e-5)
     parser.add_argument(
+        "--source-mode",
+        choices=tuple(mode.value for mode in SourceMode),
+        default=SourceMode.AUTO.value,
+        help="Interpret files automatically, as a numbered sequence, or as a comparison set.",
+    )
+    parser.add_argument(
         "--rules-config",
         default=None,
         help="Optional .toml or .json preset containing validation rules.",
     )
+    _add_discovery_args(parser, include_multiple_sequence_policy=True)
+    parser.add_argument(
+        "--fail-on-warning",
+        action="store_true",
+        help="Return exit code 1 when the report status is WARNING.",
+    )
+
+
+def _add_discovery_args(
+    parser: argparse.ArgumentParser,
+    *,
+    include_multiple_sequence_policy: bool = False,
+) -> None:
+    parser.add_argument(
+        "--frame-pattern",
+        default="*.exr",
+        help="Filename pattern used to discover EXR frames (default: *.exr).",
+    )
+    parser.add_argument(
+        "--recursive",
+        action="store_true",
+        help="Search direct and nested folders instead of using direct-first discovery.",
+    )
+    parser.add_argument(
+        "--max-depth",
+        type=int,
+        default=1,
+        help="Maximum nested folder depth for --recursive (default: 1).",
+    )
+    if include_multiple_sequence_policy:
+        parser.add_argument(
+            "--allow-multiple-sequences",
+            action="store_true",
+            help="Allow analysis when discovery finds more than one numbered sequence.",
+        )
 
 
 def _thresholds_from_args(args: argparse.Namespace) -> Thresholds:
@@ -113,6 +162,11 @@ def _options_from_backend_args(args: argparse.Namespace) -> AnalysisOptions:
         preset_name=args.preset,
         luminance_weights=(weights.r, weights.g, weights.b),
         non_black_threshold=args.non_black_threshold,
+        frame_pattern=args.frame_pattern,
+        recursive=args.recursive,
+        max_depth=args.max_depth,
+        allow_multiple_sequences=args.allow_multiple_sequences,
+        source_mode=SourceMode(args.source_mode),
     )
 
 
@@ -140,11 +194,21 @@ def _rules_from_backend_args(
 
 
 def _print_backend_report(report: AnalysisReport) -> None:
+    counts = severity_counts(report)
     print(f"Input source: {Path(report.source).resolve()}")
+    print(f"Status: {analysis_status(report).value.upper()}")
+    print(f"Source interpretation: {report.source_kind.value}")
     print(f"Frames discovered: {report.discovered_frame_count}")
     print(f"Frames processed: {report.frame_count}")
     print(f"Frames failed: {report.failed_frame_count}")
-    print(f"AOVs analyzed: {len(report.metrics_by_aov)}")
+    print(f"Color AOVs analyzed: {len(report.metrics_by_aov)}")
+    print(f"Technical AOVs diagnosed: {report.technical_aov_count}")
+    print(
+        "Findings: "
+        f"{counts[Severity.ERROR]} errors, "
+        f"{counts[Severity.WARNING]} warnings, "
+        f"{counts[Severity.INFO]} info"
+    )
     _print_sequence_check(report.sequence_check)
     if report.warnings:
         print("Warnings:")
@@ -208,7 +272,26 @@ def _print_structure(inspection: FileInspection) -> None:
             print(f"  - {warning}")
 
 
-def main(argv: list[str] | None = None) -> None:
+def _print_report_comparison(comparison) -> None:
+    print(f"Baseline: {comparison.baseline_source}")
+    print(f"Candidate: {comparison.candidate_source}")
+    print(
+        f"Status: {comparison.baseline_status} -> {comparison.candidate_status}"
+    )
+    print(f"AOVs changed: {comparison.changed_aov_count}")
+    print(f"New findings: {len(comparison.new_findings)}")
+    print(f"Resolved findings: {len(comparison.resolved_findings)}")
+    print("-" * 80)
+    for delta in comparison.metric_deltas:
+        print(
+            f"{delta.aov:20} | {delta.status:9} | "
+            f"avg={delta.average_luminance_delta!s:>12} | "
+            f"ratio={delta.non_black_ratio_delta!s:>12} | "
+            f"max={delta.max_luminance_delta!s:>12}"
+        )
+
+
+def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         prog="aovguard",
         description="Validate EXR light AOVs and report empty, near-empty, or review-worthy passes.",
@@ -224,6 +307,16 @@ def main(argv: list[str] | None = None) -> None:
 
     p = sub.add_parser("check-sequence", help="Check EXR filename sequences without decoding pixels.")
     p.add_argument("source")
+    _add_discovery_args(p)
+
+    p = sub.add_parser(
+        "compare-reports",
+        help="Compare two canonical AOVGuard JSON analysis reports.",
+    )
+    p.add_argument("baseline")
+    p.add_argument("candidate")
+    p.add_argument("--json", dest="json_path", default=None)
+    p.add_argument("--tolerance", type=float, default=1e-12)
 
     p = sub.add_parser("analyze-simple", help="Analyze simple RGB/RGBA EXR files in one folder.")
     p.add_argument("input_folder")
@@ -260,7 +353,12 @@ def main(argv: list[str] | None = None) -> None:
         if args.html_path:
             write_analysis_html(report, args.html_path, options=options)
             print(f"HTML report written to: {args.html_path}")
-        return
+        status = analysis_status(report)
+        if status is AnalysisStatus.FAIL:
+            return 1
+        if status is AnalysisStatus.WARNING and args.fail_on_warning:
+            return 1
+        return 0
 
     if args.command == "inspect-structure":
         reader = OpenEXRReader()
@@ -269,11 +367,16 @@ def main(argv: list[str] | None = None) -> None:
         except Exception as exc:
             parser.exit(1, f"aovguard inspect-structure: error: {exc}\n")
         _print_structure(inspection)
-        return
+        return 0
 
     if args.command == "check-sequence":
         try:
-            discovery = discover_frames(Path(args.source))
+            discovery = discover_frames(
+                Path(args.source),
+                pattern=args.frame_pattern,
+                recursive=args.recursive,
+                max_depth=args.max_depth,
+            )
             if not discovery.frames:
                 raise FileNotFoundError(f"No EXR files found in {discovery.source}")
             result = check_sequences(discovery.frames, source=discovery.source)
@@ -282,7 +385,22 @@ def main(argv: list[str] | None = None) -> None:
         _print_sequence_check(result)
         for warning in discovery.warnings + result.warnings:
             print(f"Warning: {warning}")
-        return
+        return 0
+
+    if args.command == "compare-reports":
+        try:
+            comparison = compare_report_files(
+                args.baseline,
+                args.candidate,
+                tolerance=args.tolerance,
+            )
+        except Exception as exc:
+            parser.exit(1, f"aovguard compare-reports: error: {exc}\n")
+        _print_report_comparison(comparison)
+        if args.json_path:
+            write_comparison_json(comparison, args.json_path)
+            print(f"Comparison JSON written to: {args.json_path}")
+        return 0
 
     if args.command == "analyze-simple":
         folder = Path(args.input_folder)
@@ -303,11 +421,11 @@ def main(argv: list[str] | None = None) -> None:
         if args.csv_path:
             write_csv(results, args.csv_path)
             print(f"CSV report written to: {args.csv_path}")
-        return
+        return 0
 
     if args.command == "inspect":
         print(inspect_exr(args.path))
-        return
+        return 0
 
     if args.command == "analyze-multilayer":
         folder = Path(args.input_folder)
@@ -328,4 +446,4 @@ def main(argv: list[str] | None = None) -> None:
         if args.csv_path:
             write_csv(results, args.csv_path)
             print(f"CSV report written to: {args.csv_path}")
-        return
+        return 0

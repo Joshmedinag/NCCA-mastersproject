@@ -5,6 +5,7 @@ from pathlib import Path
 
 from aovguard.core.findings import finding_recommendation
 from aovguard.core.models import AnalysisOptions, AnalysisReport, Severity
+from aovguard.core.status import analysis_status, severity_counts
 from aovguard.sequence.sequence_checker import format_frame_ranges
 
 
@@ -12,13 +13,13 @@ def _cell(value: object) -> str:
     return html.escape(str(value))
 
 
-def _status(report: AnalysisReport) -> tuple[str, str]:
-    severities = {finding.severity for finding in report.findings}
-    if Severity.ERROR in severities or report.failed_frame_count:
-        return "FAIL", "status-fail"
-    if Severity.WARNING in severities or report.warnings:
-        return "WARNING", "status-warning"
-    return "PASS", "status-pass"
+def _finding_source_label(finding) -> object:
+    if finding.file is not None:
+        return finding.file
+    if finding.affected_files:
+        count = len(finding.affected_files)
+        return f"{count} file{'s' if count != 1 else ''}"
+    return "Selected source"
 
 
 def build_analysis_html(
@@ -26,11 +27,9 @@ def build_analysis_html(
     *,
     options: AnalysisOptions | None = None,
 ) -> str:
-    status, status_class = _status(report)
-    severity_counts = {
-        severity: sum(finding.severity is severity for finding in report.findings)
-        for severity in Severity
-    }
+    status = analysis_status(report)
+    status_class = f"status-{status.value}"
+    counts = severity_counts(report)
     sequence_rows = []
     for sequence in report.sequence_check.sequences:
         frame_range = (
@@ -48,15 +47,55 @@ def build_analysis_html(
             f"<td>{_cell(', '.join(map(str, sequence.duplicate_frames)) or '-')}</td>"
             "</tr>"
         )
-    metric_rows = [
+    metric_rows = []
+    for name, metrics in report.metrics_by_aov.items():
+        series = report.series_metrics_by_aov.get(name)
+        median = f"{series.median_luminance:.6f}" if series else "-"
+        mad = f"{series.mad_luminance:.6f}" if series else "-"
+        outliers = len(series.outlier_frames) if series else 0
+        metric_rows.append(
+            "<tr>"
+            f"<td>{_cell(name)}</td>"
+            f"<td>{metrics.non_black_ratio:.5f}</td>"
+            f"<td>{metrics.avg_luminance:.6f}</td>"
+            f"<td>{metrics.max_luminance:.6f}</td>"
+            f"<td>{median}</td>"
+            f"<td>{mad}</td>"
+            f"<td>{outliers}</td>"
+            f"<td>{metrics.nan_count + metrics.posinf_count + metrics.neginf_count}</td>"
+            "</tr>"
+        )
+    categories = {
+        descriptor.name: descriptor.category.value
+        for inspection in report.inspections[:1]
+        for descriptor in inspection.aovs
+    }
+    technical_rows = [
         "<tr>"
-        f"<td>{_cell(name)}</td>"
+        f"<td>{_cell(aov_name)}</td>"
+        f"<td>{_cell(categories.get(aov_name, 'unknown'))}</td>"
+        f"<td>{_cell(channel_name)}</td>"
+        f"<td>{metrics.min_value:.6f}</td>"
+        f"<td>{metrics.avg_value:.6f}</td>"
+        f"<td>{metrics.max_value:.6f}</td>"
+        f"<td>{metrics.nan_count + metrics.posinf_count + metrics.neginf_count}</td>"
+        f"<td>{metrics.negative_count}</td>"
+        "</tr>"
+        for aov_name, channel_metrics in report.channel_metrics_by_aov.items()
+        if aov_name not in report.metrics_by_aov
+        for channel_name, metrics in channel_metrics.items()
+    ]
+    frame_metric_rows = [
+        "<tr>"
+        f"<td>{_cell(frame_path)}</td>"
+        f"<td>{_cell(aov_name)}</td>"
         f"<td>{metrics.non_black_ratio:.5f}</td>"
         f"<td>{metrics.avg_luminance:.6f}</td>"
         f"<td>{metrics.max_luminance:.6f}</td>"
         f"<td>{metrics.nan_count + metrics.posinf_count + metrics.neginf_count}</td>"
         "</tr>"
-        for name, metrics in report.metrics_by_aov.items()
+        for frame_path, aov_metrics in report.frame_metrics.items()
+        for aov_name, metrics in aov_metrics.items()
     ]
     finding_rows = [
         "<tr>"
@@ -65,7 +104,7 @@ def build_analysis_html(
         f"<td>{_cell(finding.aov or finding.channel or '-')}</td>"
         f"<td>{_cell(finding.message)}</td>"
         f"<td>{_cell(finding_recommendation(finding))}</td>"
-        f"<td>{_cell(finding.file or report.source)}</td>"
+        f"<td>{_cell(_finding_source_label(finding))}</td>"
         "</tr>"
         for finding in report.findings
     ]
@@ -108,16 +147,18 @@ def build_analysis_html(
 <header>
   <h1>AOVGuard Analysis Report</h1>
   <div class="source">{_cell(report.source)}</div>
-  <span class="status {status_class}">{status}</span>
+  <div class="source">Source interpretation: {_cell(report.source_kind.value)}</div>
+  <span class="status {status_class}">{status.value.upper()}</span>
 </header>
 <main>
   <section class="summary">
     <div class="metric">Frames discovered<strong>{report.discovered_frame_count}</strong></div>
     <div class="metric">Frames processed<strong>{report.frame_count}</strong></div>
     <div class="metric">Frames failed<strong>{report.failed_frame_count}</strong></div>
-    <div class="metric">AOVs analyzed<strong>{len(report.metrics_by_aov)}</strong></div>
-    <div class="metric">Errors<strong>{severity_counts[Severity.ERROR]}</strong></div>
-    <div class="metric">Warnings<strong>{severity_counts[Severity.WARNING]}</strong></div>
+    <div class="metric">Color AOVs<strong>{len(report.metrics_by_aov)}</strong></div>
+    <div class="metric">Technical AOVs<strong>{report.technical_aov_count}</strong></div>
+    <div class="metric">Errors<strong>{counts[Severity.ERROR]}</strong></div>
+    <div class="metric">Warnings<strong>{counts[Severity.WARNING]}</strong></div>
   </section>
   <h2>Configuration</h2>
   <p>Preset: <strong>{_cell(preset)}</strong></p>
@@ -126,8 +167,14 @@ def build_analysis_html(
   <table><thead><tr><th>Pattern</th><th>Directory</th><th>Range</th><th>Present</th><th>Missing</th><th>Duplicates</th></tr></thead>
   <tbody>{''.join(sequence_rows) or '<tr><td colspan="6" class="empty">No numbered sequence detected.</td></tr>'}</tbody></table>
   <h2>AOV Metrics</h2>
-  <table><thead><tr><th>AOV</th><th>Non-black ratio</th><th>Average luminance</th><th>Maximum luminance</th><th>Non-finite values</th></tr></thead>
-  <tbody>{''.join(metric_rows) or '<tr><td colspan="5" class="empty">No AOV metrics available.</td></tr>'}</tbody></table>
+  <table><thead><tr><th>AOV</th><th>Non-black ratio</th><th>Average luminance</th><th>Maximum luminance</th><th>Median</th><th>MAD</th><th>Outliers</th><th>Non-finite values</th></tr></thead>
+  <tbody>{''.join(metric_rows) or '<tr><td colspan="8" class="empty">No AOV metrics available.</td></tr>'}</tbody></table>
+  <h2>Technical AOV Diagnostics</h2>
+  <table><thead><tr><th>AOV</th><th>Category</th><th>Channel</th><th>Minimum</th><th>Average</th><th>Maximum</th><th>Non-finite values</th><th>Negative values</th></tr></thead>
+  <tbody>{''.join(technical_rows) or '<tr><td colspan="8" class="empty">No technical AOV diagnostics available.</td></tr>'}</tbody></table>
+  <h2>Per-frame Diagnostics</h2>
+  <table><thead><tr><th>File</th><th>AOV</th><th>Non-black ratio</th><th>Average luminance</th><th>Maximum luminance</th><th>Non-finite values</th></tr></thead>
+  <tbody>{''.join(frame_metric_rows) or '<tr><td colspan="6" class="empty">No per-frame metrics available.</td></tr>'}</tbody></table>
   <h2>Findings</h2>
   <table><thead><tr><th>Severity</th><th>Rule</th><th>Target</th><th>Message</th><th>Recommendation</th><th>File</th></tr></thead>
   <tbody>{''.join(finding_rows) or '<tr><td colspan="6" class="empty">No findings.</td></tr>'}</tbody></table>

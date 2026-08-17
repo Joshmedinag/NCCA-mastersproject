@@ -190,25 +190,44 @@ def validate_empty_aov(
     for aov_name, metrics in report.metrics_by_aov.items():
         if not _supports_aov(definition, aov_name, categories):
             continue
-        if metrics.has_non_finite:
-            continue
-        if (
-            metrics.max_abs_luminance <= max_luminance
-            and metrics.avg_abs_luminance <= max_average
-        ):
+        frame_samples = [
+            (frame_path, frame_aovs[aov_name])
+            for frame_path, frame_aovs in report.frame_metrics.items()
+            if aov_name in frame_aovs
+        ]
+        if not frame_samples:
+            frame_samples = [(report.source, metrics)]
+        affected_files = tuple(
+            frame_path
+            for frame_path, frame_metric in frame_samples
+            if not frame_metric.has_non_finite
+            and frame_metric.max_abs_luminance <= max_luminance
+            and frame_metric.avg_abs_luminance <= max_average
+        )
+        if affected_files:
+            if len(frame_samples) == 1:
+                message = "No visible AOV contribution was detected."
+            else:
+                message = (
+                    "No visible AOV contribution was detected in "
+                    f"{len(affected_files)}/{len(frame_samples)} analyzed files."
+                )
             findings.append(
                 Finding(
                     rule_id=definition.id,
                     severity=definition.severity,
-                    message="No visible AOV contribution was detected.",
-                    file=report.source,
+                    message=message,
+                    file=affected_files[0] if len(affected_files) == 1 else None,
                     aov=aov_name,
                     metrics={
                         "avg_luminance": metrics.avg_luminance,
                         "max_luminance": metrics.max_luminance,
                         "avg_abs_luminance": metrics.avg_abs_luminance,
                         "max_abs_luminance": metrics.max_abs_luminance,
+                        "affected_file_count": len(affected_files),
+                        "analyzed_file_count": len(frame_samples),
                     },
+                    affected_files=affected_files,
                 )
             )
     return findings
@@ -226,18 +245,35 @@ def validate_near_empty_aov(
     for aov_name, metrics in report.metrics_by_aov.items():
         if not _supports_aov(definition, aov_name, categories):
             continue
-        if metrics.has_non_finite or metrics.max_abs_luminance <= empty_max_luminance:
-            continue
-        if (
-            metrics.non_black_ratio <= max_ratio
-            and metrics.avg_abs_luminance <= max_average
-        ):
+        frame_samples = [
+            (frame_path, frame_aovs[aov_name])
+            for frame_path, frame_aovs in report.frame_metrics.items()
+            if aov_name in frame_aovs
+        ]
+        if not frame_samples:
+            frame_samples = [(report.source, metrics)]
+        affected_files = tuple(
+            frame_path
+            for frame_path, frame_metric in frame_samples
+            if not frame_metric.has_non_finite
+            and frame_metric.max_abs_luminance > empty_max_luminance
+            and frame_metric.non_black_ratio <= max_ratio
+            and frame_metric.avg_abs_luminance <= max_average
+        )
+        if affected_files:
+            if len(frame_samples) == 1:
+                message = "Only a very small AOV contribution was detected."
+            else:
+                message = (
+                    "Only a very small AOV contribution was detected in "
+                    f"{len(affected_files)}/{len(frame_samples)} analyzed files."
+                )
             findings.append(
                 Finding(
                     rule_id=definition.id,
                     severity=definition.severity,
-                    message="Only a very small AOV contribution was detected.",
-                    file=report.source,
+                    message=message,
+                    file=affected_files[0] if len(affected_files) == 1 else None,
                     aov=aov_name,
                     metrics={
                         "non_black_ratio": metrics.non_black_ratio,
@@ -245,7 +281,10 @@ def validate_near_empty_aov(
                         "max_luminance": metrics.max_luminance,
                         "avg_abs_luminance": metrics.avg_abs_luminance,
                         "max_abs_luminance": metrics.max_abs_luminance,
+                        "affected_file_count": len(affected_files),
+                        "analyzed_file_count": len(frame_samples),
                     },
+                    affected_files=affected_files,
                 )
             )
     return findings
@@ -377,7 +416,6 @@ def default_rule_definitions() -> tuple[RuleDefinition, ...]:
         RuleDefinition(
             id="nan_inf",
             severity=Severity.ERROR,
-            supported_aov_types=color_only,
         ),
         RuleDefinition(
             id="empty_aov",

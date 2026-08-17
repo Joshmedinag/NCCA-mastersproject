@@ -9,13 +9,18 @@ import numpy as np
 
 from aovguard.core.luminance import LuminanceWeights, compute_luminance
 from aovguard.core.models import (
+    AOVCategory,
+    AOVDescriptor,
     AnalysisOptions,
     AnalysisReport,
     ChannelMetricSet,
     Finding,
     FileInspection,
     MetricSet,
+    SeriesMetricSet,
     Severity,
+    SourceKind,
+    SourceMode,
 )
 from aovguard.discovery.frame_discovery import discover_frames
 from aovguard.rules.builtin import default_rule_definitions
@@ -27,6 +32,11 @@ if TYPE_CHECKING:
     from aovguard.io.protocol import EXRReader
 
 ProgressCallback = Callable[[int, int, str], None]
+CancellationCallback = Callable[[], bool]
+
+
+class AnalysisCancelled(RuntimeError):
+    """Raised when a caller requests cooperative analysis cancellation."""
 
 
 @dataclass(slots=True)
@@ -46,6 +56,9 @@ class _MetricAccumulator:
 
     def update(self, pixels: np.ndarray) -> None:
         luminance = compute_luminance(pixels, self.luminance_weights)
+        self.update_luminance(luminance)
+
+    def update_luminance(self, luminance: np.ndarray) -> None:
         self.pixel_count += int(luminance.size)
         self.nan_count += int(np.count_nonzero(np.isnan(luminance)))
         self.posinf_count += int(np.count_nonzero(np.isposinf(luminance)))
@@ -145,18 +158,143 @@ class _ChannelMetricAccumulator:
         )
 
 
-def _rgb_channel_names(inspection: FileInspection, aov_name: str) -> tuple[str, str, str]:
-    descriptor = next(
-        (aov for aov in inspection.aovs if aov.name == aov_name),
-        None,
-    )
-    if descriptor is None:
-        return tuple(f"{aov_name}.{suffix}" for suffix in ("R", "G", "B"))
+def _aov_descriptor(
+    inspection: FileInspection,
+    aov_name: str,
+) -> AOVDescriptor | None:
+    return next((aov for aov in inspection.aovs if aov.name == aov_name), None)
+
+
+def _ordered_named_channels(
+    descriptor: AOVDescriptor,
+    suffixes: tuple[str, ...],
+) -> tuple[str, ...] | None:
     by_suffix = {
         channel.rsplit(".", 1)[-1].upper(): channel
         for channel in descriptor.channels
     }
-    return tuple(by_suffix.get(suffix, f"{aov_name}.{suffix}") for suffix in ("R", "G", "B"))
+    if not set(suffixes).issubset(by_suffix):
+        return None
+    return tuple(by_suffix[suffix] for suffix in suffixes)
+
+
+def _component_channel_names(
+    inspection: FileInspection,
+    aov_name: str,
+    pixels: np.ndarray,
+) -> tuple[str, ...]:
+    descriptor = _aov_descriptor(inspection, aov_name)
+    component_count = 1 if pixels.ndim == 2 else int(pixels.shape[-1])
+    if descriptor is None:
+        if component_count == 3:
+            return tuple(f"{aov_name}.{suffix}" for suffix in ("R", "G", "B"))
+        return tuple(f"{aov_name}.{index}" for index in range(component_count))
+
+    if component_count == 1:
+        if len(descriptor.channels) == 1:
+            return (descriptor.channels[0],)
+        red = _ordered_named_channels(descriptor, ("R",))
+        return red or (descriptor.channels[0],)
+
+    preferred_orders: tuple[tuple[str, ...], ...]
+    if descriptor.category is AOVCategory.VECTOR:
+        preferred_orders = (("X", "Y", "Z"), ("R", "G", "B"))
+    elif descriptor.category is AOVCategory.COLOR:
+        preferred_orders = (("R", "G", "B"),)
+    else:
+        preferred_orders = ()
+    for order in preferred_orders:
+        names = _ordered_named_channels(descriptor, order)
+        if names is not None and len(names) == component_count:
+            return names
+    if len(descriptor.channels) >= component_count:
+        return descriptor.channels[:component_count]
+    return tuple(f"{aov_name}.{index}" for index in range(component_count))
+
+
+def _resolve_source_kind(
+    options: AnalysisOptions,
+    sequence_check,
+    frame_count: int,
+) -> SourceKind:
+    if options.source_mode is SourceMode.COMPARISON:
+        return SourceKind.COMPARISON_SET
+    if options.source_mode is SourceMode.SEQUENCE:
+        if not sequence_check.sequences:
+            raise ValueError(
+                "Sequence mode requires at least one numbered EXR sequence."
+            )
+        if sequence_check.unnumbered_files:
+            raise ValueError(
+                "Sequence mode cannot mix numbered frames with standalone EXR files."
+            )
+        if len(sequence_check.sequences) > 1 and not options.allow_multiple_sequences:
+            patterns = ", ".join(
+                sequence.pattern for sequence in sequence_check.sequences
+            )
+            raise ValueError(
+                "Sequence mode found multiple numbered EXR sequences "
+                f"({patterns}). Narrow the frame pattern or allow multiple sequences."
+            )
+        return SourceKind.NUMBERED_SEQUENCE
+    if frame_count == 1:
+        return SourceKind.SINGLE_FILE
+    if sequence_check.sequences:
+        return SourceKind.NUMBERED_SEQUENCE
+    return SourceKind.COMPARISON_SET
+
+
+def _series_metrics(
+    frame_metrics: dict[Path, dict[str, MetricSet]],
+) -> dict[str, SeriesMetricSet]:
+    by_aov: dict[str, list[tuple[Path, float]]] = {}
+    for frame_path, metrics_by_aov in frame_metrics.items():
+        for aov_name, metrics in metrics_by_aov.items():
+            if np.isfinite(metrics.avg_luminance):
+                by_aov.setdefault(aov_name, []).append(
+                    (frame_path, metrics.avg_luminance)
+                )
+
+    result: dict[str, SeriesMetricSet] = {}
+    for aov_name, samples in sorted(by_aov.items()):
+        values = np.asarray([value for _path, value in samples], dtype=np.float64)
+        median = float(np.median(values))
+        deviations = np.abs(values - median)
+        mad = float(np.median(deviations))
+        outlier_indices: np.ndarray
+        if len(samples) < 3:
+            outlier_indices = np.asarray([], dtype=np.int64)
+        elif mad > 0.0:
+            robust_z = deviations / (1.4826 * mad)
+            outlier_indices = np.flatnonzero(robust_z > 3.5)
+        else:
+            tolerance = max(1e-12, abs(median) * 1e-6)
+            outlier_indices = np.flatnonzero(deviations > tolerance)
+
+        max_delta = 0.0
+        delta_from: Path | None = None
+        delta_to: Path | None = None
+        for (previous_path, previous), (current_path, current) in zip(
+            samples, samples[1:]
+        ):
+            delta = abs(current - previous)
+            if delta > max_delta:
+                max_delta = delta
+                delta_from = previous_path
+                delta_to = current_path
+
+        result[aov_name] = SeriesMetricSet(
+            frame_count=len(samples),
+            median_luminance=median,
+            mad_luminance=mad,
+            min_luminance=float(np.min(values)),
+            max_luminance=float(np.max(values)),
+            max_frame_delta=max_delta,
+            max_frame_delta_from=delta_from,
+            max_frame_delta_to=delta_to,
+            outlier_frames=tuple(samples[index][0] for index in outlier_indices),
+        )
+    return result
 
 
 def analyze(
@@ -166,23 +304,49 @@ def analyze(
     rule_definitions: Sequence[RuleDefinition] | None = None,
     *,
     progress_callback: ProgressCallback | None = None,
+    cancellation_callback: CancellationCallback | None = None,
 ) -> AnalysisReport:
     """Analyze EXR source data through the backend-independent reader protocol."""
 
-    discovery = discover_frames(source)
+    discovery = discover_frames(
+        source,
+        pattern=options.frame_pattern,
+        recursive=options.recursive,
+        max_depth=options.max_depth,
+    )
     if not discovery.frames:
         raise FileNotFoundError(f"No EXR files found in {discovery.source}")
     sequence_check = check_sequences(discovery.frames, source=discovery.source)
+    source_kind = _resolve_source_kind(options, sequence_check, len(discovery.frames))
+    if (
+        source_kind is SourceKind.NUMBERED_SEQUENCE
+        and options.source_mode is SourceMode.AUTO
+        and options.recursive
+        and not options.allow_multiple_sequences
+        and len(sequence_check.sequences) > 1
+    ):
+        patterns = ", ".join(sequence.pattern for sequence in sequence_check.sequences)
+        raise ValueError(
+            "Recursive discovery found multiple numbered EXR sequences "
+            f"({patterns}). Narrow --frame-pattern or enable multiple sequences."
+        )
     weights = LuminanceWeights.from_values(options.luminance_weights)
     accumulators: dict[str, _MetricAccumulator] = {}
     channel_accumulators: dict[str, dict[str, _ChannelMetricAccumulator]] = {}
-    findings = list(sequence_findings(sequence_check))
+    findings = (
+        list(sequence_findings(sequence_check))
+        if source_kind is SourceKind.NUMBERED_SEQUENCE
+        else []
+    )
     inspections: list[FileInspection] = []
     successful_frames: list[Path] = []
     failed_frames: list[Path] = []
+    frame_metrics: dict[Path, dict[str, MetricSet]] = {}
 
     total_frames = len(discovery.frames)
     for frame_index, frame_path in enumerate(discovery.frames, start=1):
+        if cancellation_callback is not None and cancellation_callback():
+            raise AnalysisCancelled("Analysis cancelled by user.")
         try:
             frame = reader.read_frame(frame_path)
         except Exception as exc:
@@ -216,7 +380,25 @@ def analyze(
                 progress_callback(frame_index, total_frames, f"Unsupported EXR: {frame_path.name}")
             continue
 
+        metrics_for_frame: dict[str, MetricSet] = {}
         for aov_name, pixels in frame.aovs.items():
+            descriptor = _aov_descriptor(inspection, aov_name)
+            channel_names = _component_channel_names(inspection, aov_name, pixels)
+            per_aov = channel_accumulators.setdefault(aov_name, {})
+            for channel_index, channel_name in enumerate(channel_names):
+                values = pixels if pixels.ndim == 2 else pixels[..., channel_index]
+                channel_accumulator = per_aov.setdefault(
+                    channel_name,
+                    _ChannelMetricAccumulator(),
+                )
+                channel_accumulator.update(values)
+
+            is_color = descriptor is not None and descriptor.category is AOVCategory.COLOR
+            if descriptor is None:
+                is_color = pixels.ndim >= 3 and pixels.shape[-1] >= 3
+            if not is_color:
+                continue
+
             accumulator = accumulators.setdefault(
                 aov_name,
                 _MetricAccumulator(
@@ -224,19 +406,21 @@ def analyze(
                     luminance_weights=weights,
                 ),
             )
-            accumulator.update(pixels)
-            if pixels.ndim >= 3 and pixels.shape[-1] >= 3:
-                channel_names = _rgb_channel_names(inspection, aov_name)
-                per_aov = channel_accumulators.setdefault(aov_name, {})
-                for channel_index, channel_name in enumerate(channel_names):
-                    channel_accumulator = per_aov.setdefault(
-                        channel_name,
-                        _ChannelMetricAccumulator(),
-                    )
-                    channel_accumulator.update(pixels[..., channel_index])
+            luminance = compute_luminance(pixels, weights)
+            accumulator.update_luminance(luminance)
+            frame_accumulator = _MetricAccumulator(
+                non_black_threshold=options.non_black_threshold,
+                luminance_weights=weights,
+            )
+            frame_accumulator.update_luminance(luminance)
+            metrics_for_frame[aov_name] = frame_accumulator.finalize()
+        frame_metrics[frame_path] = metrics_for_frame
         successful_frames.append(frame_path)
         if progress_callback is not None:
             progress_callback(frame_index, total_frames, f"Processed {frame_path.name}")
+
+    if cancellation_callback is not None and cancellation_callback():
+        raise AnalysisCancelled("Analysis cancelled by user.")
 
     metrics_by_aov = {
         aov_name: accumulator.finalize()
@@ -249,6 +433,7 @@ def analyze(
         }
         for aov_name, channel_accumulators in sorted(channel_accumulators.items())
     }
+    series_metrics_by_aov = _series_metrics(frame_metrics)
 
     definitions = default_rule_definitions() if rule_definitions is None else tuple(rule_definitions)
     if options.enabled_rules is not None:
@@ -266,10 +451,17 @@ def analyze(
         successful_frames=tuple(successful_frames),
         failed_frames=tuple(failed_frames),
         findings=tuple(findings),
-        warnings=discovery.warnings + sequence_check.warnings,
+        warnings=(
+            discovery.warnings + sequence_check.warnings
+            if source_kind is SourceKind.NUMBERED_SEQUENCE
+            else discovery.warnings
+        ),
         rules_executed=enabled_rule_ids,
         sequence_check=sequence_check,
         channel_metrics_by_aov=channel_metrics_by_aov,
+        frame_metrics=frame_metrics,
+        source_kind=source_kind,
+        series_metrics_by_aov=series_metrics_by_aov,
     )
     rule_findings = execute_rules(report, definitions)
     if not rule_findings:

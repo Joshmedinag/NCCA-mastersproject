@@ -121,7 +121,7 @@ class OpenEXRReader:
             descriptors = {
                 name: descriptor
                 for name, descriptor in descriptors.items()
-                if descriptor.category is AOVCategory.COLOR
+                if descriptor.category is not AOVCategory.UNKNOWN
             }
 
         first_part = exr.parts[0]

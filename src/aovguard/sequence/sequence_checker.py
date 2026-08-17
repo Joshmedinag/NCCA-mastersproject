@@ -97,7 +97,6 @@ def check_sequences(
         warnings.append(
             f"{len(unnumbered)} unnumbered EXR file(s) were analyzed alongside numbered sequences."
         )
-
     return SequenceCheckResult(
         source=Path(source) if source is not None else None,
         sequences=tuple(sequences),

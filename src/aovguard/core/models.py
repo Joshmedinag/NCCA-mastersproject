@@ -24,6 +24,22 @@ class AOVCategory(StrEnum):
     UNKNOWN = "unknown"
 
 
+class SourceMode(StrEnum):
+    """User-selected interpretation policy for a discovered EXR source."""
+
+    AUTO = "auto"
+    SEQUENCE = "sequence"
+    COMPARISON = "comparison"
+
+
+class SourceKind(StrEnum):
+    """Resolved meaning of the files included in an analysis."""
+
+    SINGLE_FILE = "single_file"
+    NUMBERED_SEQUENCE = "numbered_sequence"
+    COMPARISON_SET = "comparison_set"
+
+
 @dataclass(frozen=True, slots=True)
 class AOVDescriptor:
     name: str
@@ -121,9 +137,15 @@ class Finding:
     aov: str | None = None
     channel: str | None = None
     metrics: Mapping[str, object] = field(default_factory=dict)
+    affected_files: tuple[Path, ...] = ()
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "metrics", MappingProxyType(dict(self.metrics)))
+        object.__setattr__(
+            self,
+            "affected_files",
+            tuple(Path(path) for path in self.affected_files),
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -132,6 +154,21 @@ class AnalysisOptions:
     enabled_rules: tuple[str, ...] | None = None
     luminance_weights: tuple[float, float, float] = (0.2126, 0.7152, 0.0722)
     non_black_threshold: float = 1e-5
+    frame_pattern: str = "*.exr"
+    recursive: bool = False
+    max_depth: int | None = 1
+    allow_multiple_sequences: bool = False
+    source_mode: SourceMode = SourceMode.AUTO
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.source_mode, SourceMode):
+            object.__setattr__(self, "source_mode", SourceMode(self.source_mode))
+        if not self.frame_pattern.strip():
+            raise ValueError("Frame pattern must not be empty.")
+        if "/" in self.frame_pattern or "\\" in self.frame_pattern:
+            raise ValueError("Frame pattern must be a filename pattern, not a path.")
+        if self.max_depth is not None and self.max_depth < 0:
+            raise ValueError("Discovery max_depth must be non-negative or None.")
 
 
 @dataclass(frozen=True, slots=True)
@@ -184,6 +221,21 @@ class SequenceCheckResult:
 
 
 @dataclass(frozen=True, slots=True)
+class SeriesMetricSet:
+    """Robust cross-frame statistics for one color AOV."""
+
+    frame_count: int
+    median_luminance: float
+    mad_luminance: float
+    min_luminance: float
+    max_luminance: float
+    max_frame_delta: float
+    max_frame_delta_from: Path | None = None
+    max_frame_delta_to: Path | None = None
+    outlier_frames: tuple[Path, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
 class AnalysisReport:
     source: Path
     frames: tuple[Path, ...]
@@ -198,8 +250,13 @@ class AnalysisReport:
     channel_metrics_by_aov: Mapping[str, Mapping[str, ChannelMetricSet]] = field(
         default_factory=dict
     )
+    frame_metrics: Mapping[Path, Mapping[str, MetricSet]] = field(default_factory=dict)
+    source_kind: SourceKind = SourceKind.SINGLE_FILE
+    series_metrics_by_aov: Mapping[str, SeriesMetricSet] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
+        if not isinstance(self.source_kind, SourceKind):
+            object.__setattr__(self, "source_kind", SourceKind(self.source_kind))
         if self.frames and not self.successful_frames and not self.failed_frames:
             object.__setattr__(self, "successful_frames", self.frames)
         object.__setattr__(self, "metrics_by_aov", MappingProxyType(dict(self.metrics_by_aov)))
@@ -212,6 +269,21 @@ class AnalysisReport:
                     for aov_name, channel_metrics in self.channel_metrics_by_aov.items()
                 }
             ),
+        )
+        object.__setattr__(
+            self,
+            "frame_metrics",
+            MappingProxyType(
+                {
+                    Path(frame_path): MappingProxyType(dict(aov_metrics))
+                    for frame_path, aov_metrics in self.frame_metrics.items()
+                }
+            ),
+        )
+        object.__setattr__(
+            self,
+            "series_metrics_by_aov",
+            MappingProxyType(dict(self.series_metrics_by_aov)),
         )
 
     @property
@@ -227,3 +299,11 @@ class AnalysisReport:
     @property
     def failed_frame_count(self) -> int:
         return len(self.failed_frames)
+
+    @property
+    def technical_aov_count(self) -> int:
+        return len(set(self.channel_metrics_by_aov) - set(self.metrics_by_aov))
+
+    @property
+    def analyzed_aov_count(self) -> int:
+        return len(self.metrics_by_aov) + self.technical_aov_count

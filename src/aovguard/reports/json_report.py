@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any, Mapping
 
 from aovguard.core.models import AnalysisOptions, AnalysisReport, FileInspection, Finding
+from aovguard.core.status import analysis_status
 
 SCHEMA_VERSION = "1.0"
 
@@ -62,6 +63,7 @@ def _finding_to_dict(finding: Finding) -> dict[str, Any]:
         "aov": finding.aov,
         "channel": finding.channel,
         "metrics": dict(finding.metrics),
+        "affected_files": [str(path) for path in finding.affected_files],
     }
 
 
@@ -73,6 +75,11 @@ def _options_to_dict(options: AnalysisOptions | None) -> dict[str, Any] | None:
         "enabled_rules": list(options.enabled_rules or ()),
         "luminance_weights": list(options.luminance_weights),
         "non_black_threshold": options.non_black_threshold,
+        "frame_pattern": options.frame_pattern,
+        "recursive": options.recursive,
+        "max_depth": options.max_depth,
+        "allow_multiple_sequences": options.allow_multiple_sequences,
+        "source_mode": options.source_mode.value,
     }
 
 
@@ -100,11 +107,16 @@ def build_analysis_report_payload(
             "version": _version(),
             "generated_utc": datetime.now(timezone.utc).isoformat(),
             "source": str(report.source),
+            "source_kind": report.source_kind.value,
+            "status": analysis_status(report).value,
             "frames_discovered": report.discovered_frame_count,
             "frames_processed": report.frame_count,
             "frames_failed": report.failed_frame_count,
             "aovs_detected": sum(category_summary.values()),
             "aovs_analyzed": len(report.metrics_by_aov),
+            "color_aovs_analyzed": len(report.metrics_by_aov),
+            "technical_aovs_diagnosed": report.technical_aov_count,
+            "aovs_diagnosed": report.analyzed_aov_count,
             "summary_by_aov_category": category_summary,
             "rules_executed": list(report.rules_executed),
             "summary_by_severity": severity_summary,
@@ -161,6 +173,35 @@ def build_analysis_report_payload(
                 for channel_name, metrics in channel_metrics.items()
             }
             for aov_name, channel_metrics in report.channel_metrics_by_aov.items()
+        },
+        "frame_metrics": {
+            str(frame_path): {
+                aov_name: asdict(metrics)
+                for aov_name, metrics in aov_metrics.items()
+            }
+            for frame_path, aov_metrics in report.frame_metrics.items()
+        },
+        "series_metrics_by_aov": {
+            aov_name: {
+                "frame_count": metrics.frame_count,
+                "median_luminance": metrics.median_luminance,
+                "mad_luminance": metrics.mad_luminance,
+                "min_luminance": metrics.min_luminance,
+                "max_luminance": metrics.max_luminance,
+                "max_frame_delta": metrics.max_frame_delta,
+                "max_frame_delta_from": (
+                    str(metrics.max_frame_delta_from)
+                    if metrics.max_frame_delta_from is not None
+                    else None
+                ),
+                "max_frame_delta_to": (
+                    str(metrics.max_frame_delta_to)
+                    if metrics.max_frame_delta_to is not None
+                    else None
+                ),
+                "outlier_frames": [str(path) for path in metrics.outlier_frames],
+            }
+            for aov_name, metrics in report.series_metrics_by_aov.items()
         },
         "findings": [_finding_to_dict(finding) for finding in report.findings],
     }

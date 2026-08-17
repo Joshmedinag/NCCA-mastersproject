@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+from fnmatch import fnmatch
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -31,28 +32,50 @@ def _path_sort_key(path: Path) -> tuple[str, tuple[tuple[int, object], ...]]:
     return str(path.parent).lower(), _natural_name_key(path)
 
 
-def _sorted_exr_files(folder: Path) -> tuple[Path, ...]:
+def _matches_frame_pattern(path: Path, pattern: str) -> bool:
+    return path.suffix.lower() == ".exr" and fnmatch(
+        path.name.casefold(),
+        pattern.casefold(),
+    )
+
+
+def _sorted_exr_files(folder: Path, pattern: str) -> tuple[Path, ...]:
     return tuple(
         sorted(
             (
                 path
                 for path in folder.iterdir()
-                if path.is_file() and path.suffix.lower() == ".exr"
+                if path.is_file() and _matches_frame_pattern(path, pattern)
             ),
             key=_path_sort_key,
         )
     )
 
 
-def discover_frames(source: str | Path) -> FrameDiscoveryResult:
+def discover_frames(
+    source: str | Path,
+    *,
+    pattern: str = "*.exr",
+    recursive: bool = False,
+    max_depth: int | None = 1,
+) -> FrameDiscoveryResult:
     """Discover the exact EXR files that should be processed.
 
-    Policy for MVP:
+    Default policy:
     - a single EXR file is accepted directly;
     - direct EXRs in a folder take priority;
     - one-level nested EXRs are used only when no direct EXRs exist;
     - mixed direct and nested inputs produce a warning.
+
+    Recursive mode includes matching direct and nested EXRs up to ``max_depth``.
     """
+
+    if not pattern.strip():
+        raise ValueError("Frame pattern must not be empty.")
+    if "/" in pattern or "\\" in pattern:
+        raise ValueError("Frame pattern must be a filename pattern, not a path.")
+    if max_depth is not None and max_depth < 0:
+        raise ValueError("Discovery max_depth must be non-negative or None.")
 
     source_path = Path(source)
     if not source_path.exists():
@@ -72,14 +95,38 @@ def discover_frames(source: str | Path) -> FrameDiscoveryResult:
     if not source_path.is_dir():
         raise NotADirectoryError(source_path)
 
-    direct_frames = _sorted_exr_files(source_path)
+    direct_frames = _sorted_exr_files(source_path, pattern)
+    if recursive:
+        nested_frames = tuple(
+            sorted(
+                (
+                    frame
+                    for frame in source_path.rglob("*")
+                    if frame.is_file()
+                    and _matches_frame_pattern(frame, pattern)
+                    and frame.parent != source_path
+                    and (
+                        max_depth is None
+                        or len(frame.relative_to(source_path).parts) - 1 <= max_depth
+                    )
+                ),
+                key=_path_sort_key,
+            )
+        )
+        return FrameDiscoveryResult(
+            source=source_path,
+            frames=tuple(sorted(direct_frames + nested_frames, key=_path_sort_key)),
+            direct_frames=direct_frames,
+            nested_frames=nested_frames,
+        )
+
     nested_frames = tuple(
         sorted(
             (
                 frame
                 for subfolder in source_path.iterdir()
                 if subfolder.is_dir()
-                for frame in _sorted_exr_files(subfolder)
+                for frame in _sorted_exr_files(subfolder, pattern)
             ),
             key=_path_sort_key,
         )
