@@ -1,0 +1,619 @@
+{
+  "schema_version": "1.0",
+  "metadata": {
+    "tool": "AOVGuard",
+    "version": "1.0.0",
+    "generated_utc": "2026-08-14T05:02:03.170585+00:00",
+    "source": "examples\\generated\\multilayer.exr",
+    "source_kind": "single_file",
+    "status": "warning",
+    "frames_discovered": 1,
+    "frames_processed": 1,
+    "frames_failed": 0,
+    "aovs_detected": 8,
+    "aovs_analyzed": 5,
+    "color_aovs_analyzed": 5,
+    "technical_aovs_diagnosed": 3,
+    "aovs_diagnosed": 8,
+    "summary_by_aov_category": {
+      "color": 5,
+      "depth": 1,
+      "vector": 2
+    },
+    "rules_executed": [
+      "nan_inf",
+      "empty_aov",
+      "near_empty_aov",
+      "resolution_mismatch",
+      "aov_structure_mismatch"
+    ],
+    "summary_by_severity": {
+      "warning": 1
+    },
+    "options": {
+      "preset_name": null,
+      "enabled_rules": [],
+      "luminance_weights": [
+        0.2126,
+        0.7152,
+        0.0722
+      ],
+      "non_black_threshold": 1e-05,
+      "frame_pattern": "*.exr",
+      "recursive": false,
+      "max_depth": 1,
+      "allow_multiple_sequences": false,
+      "source_mode": "auto"
+    }
+  },
+  "frames": [
+    "examples\\generated\\multilayer.exr"
+  ],
+  "successful_frames": [
+    "examples\\generated\\multilayer.exr"
+  ],
+  "failed_frames": [],
+  "warnings": [],
+  "sequence_check": {
+    "source": "examples\\generated\\multilayer.exr",
+    "summary": {
+      "sequence_count": 0,
+      "unnumbered_file_count": 1,
+      "missing_frame_count": 0,
+      "duplicate_frame_count": 0
+    },
+    "sequences": [],
+    "unnumbered_files": [
+      "examples\\generated\\multilayer.exr"
+    ],
+    "warnings": []
+  },
+  "inspections": [
+    {
+      "path": "examples\\generated\\multilayer.exr",
+      "width": 64,
+      "height": 36,
+      "channels": [
+        "A",
+        "B",
+        "G",
+        "N.X",
+        "N.Y",
+        "N.Z",
+        "P.X",
+        "P.Y",
+        "P.Z",
+        "R",
+        "Z",
+        "albedo.B",
+        "albedo.G",
+        "albedo.R",
+        "diffuse_direct.B",
+        "diffuse_direct.G",
+        "diffuse_direct.R",
+        "emission.B",
+        "emission.G",
+        "emission.R",
+        "specular_direct.B",
+        "specular_direct.G",
+        "specular_direct.R"
+      ],
+      "aovs": [
+        {
+          "name": "beauty",
+          "channels": [
+            "R",
+            "G",
+            "B",
+            "A"
+          ],
+          "category": "color",
+          "category_confidence": "root_rgb_channels"
+        },
+        {
+          "name": "Z",
+          "channels": [
+            "Z"
+          ],
+          "category": "depth",
+          "category_confidence": "known_depth_name"
+        },
+        {
+          "name": "N",
+          "channels": [
+            "N.X",
+            "N.Y",
+            "N.Z"
+          ],
+          "category": "vector",
+          "category_confidence": "known_vector_name"
+        },
+        {
+          "name": "P",
+          "channels": [
+            "P.X",
+            "P.Y",
+            "P.Z"
+          ],
+          "category": "vector",
+          "category_confidence": "known_vector_name"
+        },
+        {
+          "name": "albedo",
+          "channels": [
+            "albedo.B",
+            "albedo.G",
+            "albedo.R"
+          ],
+          "category": "color",
+          "category_confidence": "rgb_channels"
+        },
+        {
+          "name": "diffuse_direct",
+          "channels": [
+            "diffuse_direct.B",
+            "diffuse_direct.G",
+            "diffuse_direct.R"
+          ],
+          "category": "color",
+          "category_confidence": "rgb_channels"
+        },
+        {
+          "name": "emission",
+          "channels": [
+            "emission.B",
+            "emission.G",
+            "emission.R"
+          ],
+          "category": "color",
+          "category_confidence": "rgb_channels"
+        },
+        {
+          "name": "specular_direct",
+          "channels": [
+            "specular_direct.B",
+            "specular_direct.G",
+            "specular_direct.R"
+          ],
+          "category": "color",
+          "category_confidence": "rgb_channels"
+        }
+      ],
+      "part_count": 1,
+      "is_deep": false,
+      "warnings": []
+    }
+  ],
+  "metrics_by_aov": {
+    "albedo": {
+      "non_black_ratio": 1.0,
+      "avg_luminance": 0.49310387127722305,
+      "max_luminance": 0.7812933921813965,
+      "pixel_count": 2304,
+      "nan_count": 0,
+      "posinf_count": 0,
+      "neginf_count": 0,
+      "avg_abs_luminance": 0.49310387127722305,
+      "max_abs_luminance": 0.7812933921813965
+    },
+    "beauty": {
+      "non_black_ratio": 1.0,
+      "avg_luminance": 0.5078677121726085,
+      "max_luminance": 0.9489468932151794,
+      "pixel_count": 2304,
+      "nan_count": 0,
+      "posinf_count": 0,
+      "neginf_count": 0,
+      "avg_abs_luminance": 0.5078677121726085,
+      "max_abs_luminance": 0.9489468932151794
+    },
+    "diffuse_direct": {
+      "non_black_ratio": 1.0,
+      "avg_luminance": 0.20626370053832943,
+      "max_luminance": 0.389151394367218,
+      "pixel_count": 2304,
+      "nan_count": 0,
+      "posinf_count": 0,
+      "neginf_count": 0,
+      "avg_abs_luminance": 0.20626370053832943,
+      "max_abs_luminance": 0.389151394367218
+    },
+    "emission": {
+      "non_black_ratio": 0.0,
+      "avg_luminance": 0.0,
+      "max_luminance": 0.0,
+      "pixel_count": 2304,
+      "nan_count": 0,
+      "posinf_count": 0,
+      "neginf_count": 0,
+      "avg_abs_luminance": 0.0,
+      "max_abs_luminance": 0.0
+    },
+    "specular_direct": {
+      "non_black_ratio": 0.9995659722222222,
+      "avg_luminance": 0.2619949695139062,
+      "max_luminance": 2.0682098865509033,
+      "pixel_count": 2304,
+      "nan_count": 0,
+      "posinf_count": 0,
+      "neginf_count": 0,
+      "avg_abs_luminance": 0.2619949695139062,
+      "max_abs_luminance": 2.0682098865509033
+    }
+  },
+  "channel_metrics_by_aov": {
+    "N": {
+      "N.X": {
+        "pixel_count": 2304,
+        "avg_value": 9.934107462565104e-09,
+        "min_value": -1.0,
+        "max_value": 1.0,
+        "nan_count": 0,
+        "posinf_count": 0,
+        "neginf_count": 0,
+        "negative_count": 1152
+      },
+      "N.Y": {
+        "pixel_count": 2304,
+        "avg_value": 0.0,
+        "min_value": -1.0,
+        "max_value": 1.0,
+        "nan_count": 0,
+        "posinf_count": 0,
+        "neginf_count": 0,
+        "negative_count": 1152
+      },
+      "N.Z": {
+        "pixel_count": 2304,
+        "avg_value": 0.7714909447564019,
+        "min_value": 0.0,
+        "max_value": 0.9998739957809448,
+        "nan_count": 0,
+        "posinf_count": 0,
+        "neginf_count": 0,
+        "negative_count": 0
+      }
+    },
+    "P": {
+      "P.X": {
+        "pixel_count": 2304,
+        "avg_value": 5.0,
+        "min_value": 0.0,
+        "max_value": 10.0,
+        "nan_count": 0,
+        "posinf_count": 0,
+        "neginf_count": 0,
+        "negative_count": 0
+      },
+      "P.Y": {
+        "pixel_count": 2304,
+        "avg_value": 2.500000423855252,
+        "min_value": 0.0,
+        "max_value": 5.0,
+        "nan_count": 0,
+        "posinf_count": 0,
+        "neginf_count": 0,
+        "negative_count": 0
+      },
+      "P.Z": {
+        "pixel_count": 2304,
+        "avg_value": 1.2179419199625652,
+        "min_value": 0.5857864618301392,
+        "max_value": 1.967315435409546,
+        "nan_count": 0,
+        "posinf_count": 0,
+        "neginf_count": 0,
+        "negative_count": 0
+      }
+    },
+    "Z": {
+      "Z": {
+        "pixel_count": 2304,
+        "avg_value": 13.0,
+        "min_value": 1.0,
+        "max_value": 25.0,
+        "nan_count": 0,
+        "posinf_count": 0,
+        "neginf_count": 0,
+        "negative_count": 0
+      }
+    },
+    "albedo": {
+      "albedo.B": {
+        "pixel_count": 2304,
+        "avg_value": 0.40448549058702254,
+        "min_value": 0.2464466094970703,
+        "max_value": 0.5918288826942444,
+        "nan_count": 0,
+        "posinf_count": 0,
+        "neginf_count": 0,
+        "negative_count": 0
+      },
+      "albedo.G": {
+        "pixel_count": 2304,
+        "avg_value": 0.5,
+        "min_value": 0.20000000298023224,
+        "max_value": 0.800000011920929,
+        "nan_count": 0,
+        "posinf_count": 0,
+        "neginf_count": 0,
+        "negative_count": 0
+      },
+      "albedo.R": {
+        "pixel_count": 2304,
+        "avg_value": 0.5,
+        "min_value": 0.10000000149011612,
+        "max_value": 0.9000000357627869,
+        "nan_count": 0,
+        "posinf_count": 0,
+        "neginf_count": 0,
+        "negative_count": 0
+      }
+    },
+    "beauty": {
+      "B": {
+        "pixel_count": 2304,
+        "avg_value": 0.6089709599812826,
+        "min_value": 0.2928932309150696,
+        "max_value": 0.983657717704773,
+        "nan_count": 0,
+        "posinf_count": 0,
+        "neginf_count": 0,
+        "negative_count": 0
+      },
+      "G": {
+        "pixel_count": 2304,
+        "avg_value": 0.5,
+        "min_value": 0.0,
+        "max_value": 1.0,
+        "nan_count": 0,
+        "posinf_count": 0,
+        "neginf_count": 0,
+        "negative_count": 0
+      },
+      "R": {
+        "pixel_count": 2304,
+        "avg_value": 0.5,
+        "min_value": 0.0,
+        "max_value": 1.0,
+        "nan_count": 0,
+        "posinf_count": 0,
+        "neginf_count": 0,
+        "negative_count": 0
+      }
+    },
+    "diffuse_direct": {
+      "diffuse_direct.B": {
+        "pixel_count": 2304,
+        "avg_value": 0.2131398253970676,
+        "min_value": 0.10251262784004211,
+        "max_value": 0.3442801833152771,
+        "nan_count": 0,
+        "posinf_count": 0,
+        "neginf_count": 0,
+        "negative_count": 0
+      },
+      "diffuse_direct.G": {
+        "pixel_count": 2304,
+        "avg_value": 0.20000000794728598,
+        "min_value": 0.0,
+        "max_value": 0.4000000059604645,
+        "nan_count": 0,
+        "posinf_count": 0,
+        "neginf_count": 0,
+        "negative_count": 0
+      },
+      "diffuse_direct.R": {
+        "pixel_count": 2304,
+        "avg_value": 0.22499998410542807,
+        "min_value": 0.0,
+        "max_value": 0.44999998807907104,
+        "nan_count": 0,
+        "posinf_count": 0,
+        "neginf_count": 0,
+        "negative_count": 0
+      }
+    },
+    "emission": {
+      "emission.B": {
+        "pixel_count": 2304,
+        "avg_value": 0.0,
+        "min_value": 0.0,
+        "max_value": 0.0,
+        "nan_count": 0,
+        "posinf_count": 0,
+        "neginf_count": 0,
+        "negative_count": 0
+      },
+      "emission.G": {
+        "pixel_count": 2304,
+        "avg_value": 0.0,
+        "min_value": 0.0,
+        "max_value": 0.0,
+        "nan_count": 0,
+        "posinf_count": 0,
+        "neginf_count": 0,
+        "negative_count": 0
+      },
+      "emission.R": {
+        "pixel_count": 2304,
+        "avg_value": 0.0,
+        "min_value": 0.0,
+        "max_value": 0.0,
+        "nan_count": 0,
+        "posinf_count": 0,
+        "neginf_count": 0,
+        "negative_count": 0
+      }
+    },
+    "specular_direct": {
+      "specular_direct.B": {
+        "pixel_count": 2304,
+        "avg_value": 0.1662846803665161,
+        "min_value": 0.00013539876090362668,
+        "max_value": 2.1912505626678467,
+        "nan_count": 0,
+        "posinf_count": 0,
+        "neginf_count": 0,
+        "negative_count": 0
+      },
+      "specular_direct.G": {
+        "pixel_count": 2304,
+        "avg_value": 0.2448847558763292,
+        "min_value": 0.0,
+        "max_value": 2.0,
+        "nan_count": 0,
+        "posinf_count": 0,
+        "neginf_count": 0,
+        "negative_count": 0
+      },
+      "specular_direct.R": {
+        "pixel_count": 2304,
+        "avg_value": 0.3520584636264377,
+        "min_value": 0.0,
+        "max_value": 3.0,
+        "nan_count": 0,
+        "posinf_count": 0,
+        "neginf_count": 0,
+        "negative_count": 0
+      }
+    }
+  },
+  "frame_metrics": {
+    "examples\\generated\\multilayer.exr": {
+      "beauty": {
+        "non_black_ratio": 1.0,
+        "avg_luminance": 0.5078677121726085,
+        "max_luminance": 0.9489468932151794,
+        "pixel_count": 2304,
+        "nan_count": 0,
+        "posinf_count": 0,
+        "neginf_count": 0,
+        "avg_abs_luminance": 0.5078677121726085,
+        "max_abs_luminance": 0.9489468932151794
+      },
+      "albedo": {
+        "non_black_ratio": 1.0,
+        "avg_luminance": 0.49310387127722305,
+        "max_luminance": 0.7812933921813965,
+        "pixel_count": 2304,
+        "nan_count": 0,
+        "posinf_count": 0,
+        "neginf_count": 0,
+        "avg_abs_luminance": 0.49310387127722305,
+        "max_abs_luminance": 0.7812933921813965
+      },
+      "diffuse_direct": {
+        "non_black_ratio": 1.0,
+        "avg_luminance": 0.20626370053832943,
+        "max_luminance": 0.389151394367218,
+        "pixel_count": 2304,
+        "nan_count": 0,
+        "posinf_count": 0,
+        "neginf_count": 0,
+        "avg_abs_luminance": 0.20626370053832943,
+        "max_abs_luminance": 0.389151394367218
+      },
+      "emission": {
+        "non_black_ratio": 0.0,
+        "avg_luminance": 0.0,
+        "max_luminance": 0.0,
+        "pixel_count": 2304,
+        "nan_count": 0,
+        "posinf_count": 0,
+        "neginf_count": 0,
+        "avg_abs_luminance": 0.0,
+        "max_abs_luminance": 0.0
+      },
+      "specular_direct": {
+        "non_black_ratio": 0.9995659722222222,
+        "avg_luminance": 0.2619949695139062,
+        "max_luminance": 2.0682098865509033,
+        "pixel_count": 2304,
+        "nan_count": 0,
+        "posinf_count": 0,
+        "neginf_count": 0,
+        "avg_abs_luminance": 0.2619949695139062,
+        "max_abs_luminance": 2.0682098865509033
+      }
+    }
+  },
+  "series_metrics_by_aov": {
+    "albedo": {
+      "frame_count": 1,
+      "median_luminance": 0.49310387127722305,
+      "mad_luminance": 0.0,
+      "min_luminance": 0.49310387127722305,
+      "max_luminance": 0.49310387127722305,
+      "max_frame_delta": 0.0,
+      "max_frame_delta_from": null,
+      "max_frame_delta_to": null,
+      "outlier_frames": []
+    },
+    "beauty": {
+      "frame_count": 1,
+      "median_luminance": 0.5078677121726085,
+      "mad_luminance": 0.0,
+      "min_luminance": 0.5078677121726085,
+      "max_luminance": 0.5078677121726085,
+      "max_frame_delta": 0.0,
+      "max_frame_delta_from": null,
+      "max_frame_delta_to": null,
+      "outlier_frames": []
+    },
+    "diffuse_direct": {
+      "frame_count": 1,
+      "median_luminance": 0.20626370053832943,
+      "mad_luminance": 0.0,
+      "min_luminance": 0.20626370053832943,
+      "max_luminance": 0.20626370053832943,
+      "max_frame_delta": 0.0,
+      "max_frame_delta_from": null,
+      "max_frame_delta_to": null,
+      "outlier_frames": []
+    },
+    "emission": {
+      "frame_count": 1,
+      "median_luminance": 0.0,
+      "mad_luminance": 0.0,
+      "min_luminance": 0.0,
+      "max_luminance": 0.0,
+      "max_frame_delta": 0.0,
+      "max_frame_delta_from": null,
+      "max_frame_delta_to": null,
+      "outlier_frames": []
+    },
+    "specular_direct": {
+      "frame_count": 1,
+      "median_luminance": 0.2619949695139062,
+      "mad_luminance": 0.0,
+      "min_luminance": 0.2619949695139062,
+      "max_luminance": 0.2619949695139062,
+      "max_frame_delta": 0.0,
+      "max_frame_delta_from": null,
+      "max_frame_delta_to": null,
+      "outlier_frames": []
+    }
+  },
+  "findings": [
+    {
+      "rule_id": "empty_aov",
+      "severity": "warning",
+      "message": "No visible AOV contribution was detected.",
+      "file": "examples\\generated\\multilayer.exr",
+      "aov": "emission",
+      "channel": null,
+      "metrics": {
+        "avg_luminance": 0.0,
+        "max_luminance": 0.0,
+        "avg_abs_luminance": 0.0,
+        "max_abs_luminance": 0.0,
+        "affected_file_count": 1,
+        "analyzed_file_count": 1
+      },
+      "affected_files": [
+        "examples\\generated\\multilayer.exr"
+      ]
+    }
+  ]
+}
